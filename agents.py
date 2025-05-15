@@ -1,53 +1,81 @@
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="openai")
-from crewai import Agent,Task,Crew
 import os
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
-topic=input("Enter the topic for the essay: ")
+from crewai import Agent, Task, Crew
+import google.generativeai as genai
+from langchain.tools import tool
 load_dotenv()
-llm=ChatOpenAI(
-    model="gpt-3.5-turbo",
-    temperature=0.7)
+from langchain_google_genai import ChatGoogleGenerativeAI
+genai.configure(api_key=os.getenv("Gemini_api_key"))
+from crewai import LLM
 
-researcher=Agent(
-    role = "Researcher",
-    goal="find detailed information about the {topic}",
-    backstory="1) You are a researcher. You will be given a topic and you need to find detailed information about it."
-    "2)you will find the legit information which will help the writer to critically and diplomatically write about it.",
+llm = LLM(
+    model="gemini/gemini-2.0-flash",
+    temperature=0.7,
+)
+# Ask user for topic
+topic = input("Enter the topic: ")
+
+# Create Agents
+researcher = Agent(
+    role="Researcher",
+    goal=f"Find detailed information about the topic: {topic}",
+    backstory=(
+        "You are a researcher. You will be given a topic and need to find factual and detailed information. "
+        "You must ensure the legitimacy and usefulness of the information so the writer can create a well-reasoned and diplomatic essay."
+    ),
     llm=llm,
     verbose=True
 )
 
-writer=Agent(
-    role = "writer",
-    goal="write a detailed eassy on the {topic} based on the information provided by the researcher",
-    backstory="1)You are a professional essay writer for the upse cse exams"
-    "2)you will analysis the information gathered by the researcher and critically analyze it"
-    "3)you will write an eassy which will be diplomatic and have proper resoning and the eassy format",
-    llm=llm,    
+writer = Agent(
+    role="Writer",
+    goal=f"Write a detailed UPSC-style essay on {topic} based on the researcher's input.",
+    backstory=(
+        "You are a professional UPSC CSE essay writer. You critically analyze the research provided and write "
+        "a well-structured, diplomatic essay with reasoning, facts, and a clear format (introduction, body, conclusion)."
+    ),
+    llm=llm,
     verbose=True
 )
-researcher_task=Task(
-    description="find detailed information about the {topic}",
-    expected_output="detailed information about the {topic}",
-    agent=researcher,
-    
-    
+editor = Agent(
+    role="Editor",
+    goal=f"Edit the essay written by the writer on {topic}.",
+    backstory=(
+        "You are an editor. You will review the essay for clarity, coherence, and correctness. "
+        "Make sure the essay is well-structured and free of errors."
+        "Maintain the eassy in the upse format."
+    ),
+    llm=llm,
+    verbose=True
 )
-writing_task=Task(
-    description="write a detailed eassy on the {topic} based on the information provided by the researcher",
-    expected_output="detailed eassy on the {topic}"
-    "2)you will analysis the information gathered by the researcher and critically analyze it"
-     "3) you will then write a critical and diplomatic eassy ",
+
+# Create Tasks
+researcher_task = Task(
+    description=f"Research and gather detailed information on the topic: {topic}.",
+    expected_output=f"A detailed summary and bullet points covering all aspects of the topic: {topic}.",
+    agent=researcher
+)
+
+writing_task = Task(
+    description=f"Using the researcher's findings, write a critical, factual, and diplomatic UPSC-style essay on: {topic}.",
+    expected_output="A 500-700 word essay with proper structure, argumentation, and examples.",
     agent=writer,
-    depends_on=[researcher_task])
-
-crew=Crew(
-    agents=[researcher,writer],
-    tasks=[researcher_task,writing_task],
-    verbose=True    
+    depends_on=[researcher_task]
+)
+editing_task = Task(
+    description=f"Edit the essay written by the writer on: {topic}.",
+    expected_output="A polished and refined version of the essay, ready for submission.",
+    agent=editor,
+    depends_on=[writing_task]
+)
+# Create and run Crew
+crew = Crew(
+    agents=[researcher, writer,editor],
+    tasks=[researcher_task, writing_task,editing_task],
+    verbose=True
 )
 
-result=crew.kickoff()
+# Run the workflow
+result = crew.kickoff()
+print("\n\n✅ FINAL ESSAY OUTPUT:\n")
 print(result)
